@@ -22,16 +22,21 @@ class DisableCommand(commands.Cog):
 
         command = self.bot.tree.get_command(command_name)
         if command and command.name not in self.disabled_commands:
+            # Responde à interação de forma diferida para ganhar tempo.
+            await interaction.response.defer(ephemeral=True)
+            
             # Armazena o comando original
             self.original_commands[command.name] = command
             # Remove o comando da árvore para desativá-lo
             self.bot.tree.remove_command(command.name)
             self.disabled_commands.append(command.name)
             await self.bot.tree.sync()
-            await interaction.response.send_message(f"Comando `{command_name}` desativado com sucesso.", ephemeral=True)
+            
+            # Envia a mensagem de sucesso como um "follow-up".
+            await interaction.followup.send(f"Comando `{command_name}` desativado com sucesso.", ephemeral=True)
         else:
             await interaction.response.send_message(f"Comando `{command_name}` não encontrado ou já está desativado.", ephemeral=True)
-
+            
     @app_commands.command(name="enable", description="Reativa um comando do bot. Apenas o dono pode usar.")
     @app_commands.describe(command_name="O nome do comando para reativar.")
     async def enable(self, interaction: discord.Interaction, command_name: str):
@@ -40,6 +45,9 @@ class DisableCommand(commands.Cog):
             return
 
         if command_name in self.disabled_commands:
+            # Responde à interação de forma diferida para ganhar tempo.
+            await interaction.response.defer(ephemeral=True)
+            
             original_command = self.original_commands.get(command_name)
             if original_command:
                 # Adiciona o comando de volta à árvore
@@ -47,9 +55,11 @@ class DisableCommand(commands.Cog):
                 self.disabled_commands.remove(command_name)
                 del self.original_commands[command_name]
                 await self.bot.tree.sync()
-                await interaction.response.send_message(f"Comando `{command_name}` reativado com sucesso.", ephemeral=True)
+                
+                # Envia a mensagem de sucesso como um "follow-up".
+                await interaction.followup.send(f"Comando `{command_name}` reativado com sucesso.", ephemeral=True)
             else:
-                await interaction.response.send_message(f"Não foi possível reativar o comando `{command_name}`.", ephemeral=True)
+                await interaction.followup.send(f"Não foi possível reativar o comando `{command_name}`.", ephemeral=True)
         else:
             await interaction.response.send_message(f"Comando `{command_name}` não encontrado na lista de desativados.", ephemeral=True)
 
