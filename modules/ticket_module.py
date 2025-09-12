@@ -3,9 +3,8 @@ from discord.ext import commands
 from discord import app_commands, ui
 import datetime
 from database.database import get_collection
-from bson import ObjectId
-import asyncio
 import os
+import asyncio
 
 class TicketButton(discord.ui.Button):
     def __init__(self, bot):
@@ -13,6 +12,7 @@ class TicketButton(discord.ui.Button):
         self.bot = bot
 
     async def callback(self, interaction: discord.Interaction):
+        # A resposta do botão é enviar o modal
         await interaction.response.send_modal(TicketModal(self.bot))
 
 class TicketModal(ui.Modal, title="Abrir Ticket"):
@@ -37,11 +37,19 @@ class TicketModal(ui.Modal, title="Abrir Ticket"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
+        # 1. Responda imediatamente ao modal com um deferral efêmero.
+        # Isso evita que o Discord dê erro e garante que a interação não expire.
         await interaction.response.defer(ephemeral=True)
 
         guild_id = interaction.guild_id
         collection = get_collection(self.bot.db_client, f"tickets_{guild_id}")
         
+        # 2. Verificação de ticket existente
+        existing_ticket = await collection.find_one({"user_id": interaction.user.id, "closed": False})
+        if existing_ticket:
+            await interaction.followup.send("Você já tem um ticket aberto.", ephemeral=True)
+            return
+
         channel_name = f"ticket-{interaction.user.name.lower().replace(' ', '-')}"
         
         ticket_category = discord.utils.get(interaction.guild.categories, name="Tickets")
@@ -54,32 +62,45 @@ class TicketModal(ui.Modal, title="Abrir Ticket"):
             interaction.guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)
         }
 
-        ticket_channel = await interaction.guild.create_text_channel(
-            name=channel_name,
-            category=ticket_category,
-            overwrites=overwrites
-        )
+        try:
+            # 3. Criação do canal
+            ticket_channel = await interaction.guild.create_text_channel(
+                name=channel_name,
+                category=ticket_category,
+                overwrites=overwrites,
+                topic=str(interaction.user.id)
+            )
 
-        ticket_embed = discord.Embed(
-            title=f"Novo Ticket de Suporte",
-            description=f"Ticket aberto por {interaction.user.mention} (ID: {interaction.user.id}).\n\n**Assunto:** {self.subject.value}\n**Descrição:** {self.description.value or 'Nenhuma'}",
-            color=discord.Color.blue()
-        )
-        ticket_embed.set_footer(text=f"Ticket ID: {interaction.user.id}")
+            # 4. Criação do embed
+            ticket_embed = discord.Embed(
+                title=f"Novo Ticket de Suporte",
+                description=f"Ticket aberto por {interaction.user.mention} (ID: {interaction.user.id}).\n\n**Assunto:** {self.subject.value}\n**Descrição:** {self.description.value or 'Nenhuma'}",
+                color=discord.Color.blue()
+            )
+            ticket_embed.set_footer(text=f"Ticket ID: {interaction.user.id}")
 
-        view = TicketView(self.bot)
-        initial_message = await ticket_channel.send(embed=ticket_embed, view=view)
-        
-        await collection.insert_one({
-            "channel_id": ticket_channel.id,
-            "user_id": interaction.user.id,
-            "guild_id": guild_id,
-            "created_at": datetime.datetime.now(),
-            "subject": self.subject.value,
-            "initial_message_id": initial_message.id
-        })
+            view = TicketView(self.bot)
+            
+            # 5. Envia a mensagem inicial no novo canal
+            initial_message = await ticket_channel.send(embed=ticket_embed, view=view)
+            
+            # 6. Salva as informações no banco de dados
+            await collection.insert_one({
+                "channel_id": ticket_channel.id,
+                "user_id": interaction.user.id,
+                "guild_id": guild_id,
+                "created_at": datetime.datetime.now(),
+                "subject": self.subject.value,
+                "initial_message_id": initial_message.id,
+                "closed": False
+            })
 
-        await interaction.followup.send(f"Seu ticket foi criado em {ticket_channel.mention}", ephemeral=True)
+            # 7. Responda ao usuário com a mensagem de sucesso usando followup.send
+            await interaction.followup.send(f"Seu ticket foi criado em {ticket_channel.mention}", ephemeral=True)
+
+        except Exception as e:
+            print(f"Erro ao criar ticket: {e}")
+            await interaction.followup.send("Ocorreu um erro ao tentar criar o seu ticket. Por favor, tente novamente mais tarde.", ephemeral=True)
 
 class TicketView(discord.ui.View):
     def __init__(self, bot):
@@ -94,7 +115,7 @@ class TicketView(discord.ui.View):
 
         await interaction.response.defer(ephemeral=True)
 
-        transcript = f"Transcrição do Ticket\nTicket ID: {interaction.channel.id}\nUsuário: {interaction.channel.topic}\nData: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        transcript = f"Transcrição do Ticket\nTicket ID: {interaction.channel.id}\nUsuário ID: {interaction.channel.topic}\nData: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
         async for message in interaction.channel.history(limit=None, oldest_first=True):
             transcript += f"[{message.created_at.strftime('%Y-%m-%d %H:%M:%S')}] {message.author.name}: {message.content}\n"
 
@@ -118,10 +139,6 @@ class PanelTicketView(discord.ui.View):
         super().__init__(timeout=None)
         self.bot = bot
         self.add_item(TicketButton(self.bot))
-
-    @discord.ui.button(label="Abrir Ticket", style=discord.ButtonStyle.green, custom_id="open_ticket")
-    async def open_ticket_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(TicketModal(self.bot))
 
 class TicketModule(commands.Cog):
     def __init__(self, bot):
@@ -155,10 +172,12 @@ class TicketModule(commands.Cog):
                 self.add_item(self.color_hex)
             
             async def on_submit(self, modal_interaction: discord.Interaction):
+                await modal_interaction.response.defer(ephemeral=True)
+                
                 try:
                     color_value = int(self.color_hex.value.replace("#", "0x"), 16) if self.color_hex.value else 0x3498DB
                 except ValueError:
-                    await modal_interaction.response.send_message("Cor HEX inválida. Por favor, insira um valor como #FFFFFF.", ephemeral=True)
+                    await modal_interaction.followup.send("Cor HEX inválida. Por favor, insira um valor como #FFFFFF.", ephemeral=True)
                     return
                 
                 embed = discord.Embed(
@@ -173,9 +192,7 @@ class TicketModule(commands.Cog):
                     
                 view = PanelTicketView(self.bot)
                 
-                await modal_interaction.response.defer(ephemeral=True)
-
-                message = await modal_interaction.followup.send(embed=embed, view=view, ephemeral=False)
+                message = await modal_interaction.followup.send(embed=embed, view=view)
                 
                 panel_data = {
                     "guild_id": modal_interaction.guild_id,
@@ -197,6 +214,8 @@ class TicketModule(commands.Cog):
                 except Exception as e:
                     print(f"Erro ao salvar o painel no MongoDB: {e}")
 
+                await modal_interaction.followup.send("Painel de ticket criado com sucesso!", ephemeral=True)
+
         await interaction.response.send_modal(PanelModal(self.bot, self.panel_collection))
 
     @app_commands.command(name="fechar_ticket", description="Fecha o ticket atual.")
@@ -208,7 +227,10 @@ class TicketModule(commands.Cog):
 
         await interaction.response.defer(ephemeral=True)
 
-        transcript = f"Transcrição do Ticket\nTicket ID: {interaction.channel.id}\nUsuário: {interaction.channel.topic}\nData: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        ticket_collection = get_collection(self.bot.db_client, f"tickets_{interaction.guild_id}")
+        await ticket_collection.update_one({"channel_id": interaction.channel_id}, {"$set": {"closed": True}})
+
+        transcript = f"Transcrição do Ticket\nTicket ID: {interaction.channel.id}\nUsuário ID: {interaction.channel.topic}\nData: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
         async for message in interaction.channel.history(limit=None, oldest_first=True):
             transcript += f"[{message.created_at.strftime('%Y-%m-%d %H:%M:%S')}] {message.author.name}: {message.content}\n"
 
@@ -255,10 +277,8 @@ class TicketModule(commands.Cog):
 async def setup(bot: commands.Bot):
     await bot.add_cog(TicketModule(bot))
     
-    # Carrega a View do botão de fechar para todos os tickets
     bot.add_view(TicketView(bot))
     
-    # Carrega os painéis de tickets salvos no banco de dados e os recria
     collection = get_collection(bot.db_client, "ticket_panels")
     async for panel_data in collection.find():
         try:
@@ -266,7 +286,6 @@ async def setup(bot: commands.Bot):
             if channel:
                 try:
                     await channel.fetch_message(panel_data["message_id"])
-                    # Adiciona a view do painel para que seja persistente
                     panel_view = PanelTicketView(bot)
                     bot.add_view(panel_view)
                 except discord.NotFound:
