@@ -66,12 +66,15 @@ class BackupRestore(commands.Cog):
                 "permission_overwrites": []
             }
             # Permissões da Categoria
-            for overwrite in category.overwrites:
+            for target, overwrite in category.overwrites.items():
+                target_type = "role" if isinstance(target, discord.Role) else "member"
+                target_identifier = target.name if isinstance(target, discord.Role) else target.id
+
                 category_data["permission_overwrites"].append({
-                    "id": overwrite.id,
-                    "type": "role" if isinstance(overwrite, discord.Role) else "member",
-                    "allow": overwrite.pair[0].value,
-                    "deny": overwrite.pair[1].value
+                    "name_or_id": target_identifier,
+                    "type": target_type,
+                    "allow": overwrite.pair()[0].value,  # Corrigido aqui
+                    "deny": overwrite.pair()[1].value    # Corrigido aqui
                 })
             
             # Canais dentro da Categoria
@@ -79,8 +82,22 @@ class BackupRestore(commands.Cog):
             for channel in category.channels:
                 channel_data = {
                     "name": channel.name,
-                    "position": channel.position
+                    "position": channel.position,
+                    "permission_overwrites": []
                 }
+                
+                # Permissões do Canal
+                for target, overwrite in channel.overwrites.items():
+                    target_type = "role" if isinstance(target, discord.Role) else "member"
+                    target_identifier = target.name if isinstance(target, discord.Role) else target.id
+
+                    channel_data["permission_overwrites"].append({
+                        "name_or_id": target_identifier,
+                        "type": target_type,
+                        "allow": overwrite.pair()[0].value, # Corrigido aqui
+                        "deny": overwrite.pair()[1].value   # Corrigido aqui
+                    })
+
                 if isinstance(channel, discord.TextChannel):
                     channel_data["type"] = "text"
                     channel_data["topic"] = channel.topic
@@ -99,8 +116,22 @@ class BackupRestore(commands.Cog):
                 channel_data = {
                     "name": channel.name,
                     "type": "text" if isinstance(channel, discord.TextChannel) else "voice",
-                    "position": channel.position
+                    "position": channel.position,
+                    "permission_overwrites": []
                 }
+                
+                # Permissões do Canal
+                for target, overwrite in channel.overwrites.items():
+                    target_type = "role" if isinstance(target, discord.Role) else "member"
+                    target_identifier = target.name if isinstance(target, discord.Role) else target.id
+
+                    channel_data["permission_overwrites"].append({
+                        "name_or_id": target_identifier,
+                        "type": target_type,
+                        "allow": overwrite.pair()[0].value, # Corrigido aqui
+                        "deny": overwrite.pair()[1].value   # Corrigido aqui
+                    })
+
                 if isinstance(channel, discord.TextChannel):
                     channel_data["topic"] = channel.topic
                 elif isinstance(channel, discord.VoiceChannel):
@@ -201,26 +232,63 @@ class BackupRestore(commands.Cog):
 
         # Restaurar Canais e Categorias
         for channel_data in backup_data["channels"]:
+            overwrites = {}
+            for overwrite_data in channel_data["permission_overwrites"]:
+                target_type = overwrite_data["type"]
+                target_identifier = overwrite_data["name_or_id"]
+
+                target = None
+                if target_type == "role":
+                    target = discord.utils.get(guild.roles, name=target_identifier)
+                elif target_type == "member":
+                    target = discord.utils.get(guild.members, id=target_identifier)
+
+                if target:
+                    overwrites[target] = discord.PermissionOverwrite(
+                        allow=discord.Permissions(overwrite_data["allow"]),
+                        deny=discord.Permissions(overwrite_data["deny"])
+                    )
+
             if channel_data["type"] == "category":
                 new_category = await guild.create_category(
                     name=channel_data["name"],
-                    position=channel_data["position"]
+                    position=channel_data["position"],
+                    overwrites=overwrites
                 )
                 # Criar canais dentro da categoria
                 for sub_channel_data in channel_data.get("channels", []):
+                    sub_overwrites = {}
+                    for overwrite_data in sub_channel_data.get("permission_overwrites", []):
+                        target_type = overwrite_data["type"]
+                        target_identifier = overwrite_data["name_or_id"]
+                        
+                        target = None
+                        if target_type == "role":
+                            target = discord.utils.get(guild.roles, name=target_identifier)
+                        elif target_type == "member":
+                            target = discord.utils.get(guild.members, id=target_identifier)
+                        
+                        if target:
+                            sub_overwrites[target] = discord.PermissionOverwrite(
+                                allow=discord.Permissions(overwrite_data["allow"]),
+                                deny=discord.Permissions(overwrite_data["deny"])
+                            )
+
                     if sub_channel_data["type"] == "text":
                         await guild.create_text_channel(
                             name=sub_channel_data["name"],
                             category=new_category,
                             position=sub_channel_data.get("position", 0),
-                            topic=sub_channel_data.get("topic")
+                            topic=sub_channel_data.get("topic"),
+                            overwrites=sub_overwrites
                         )
                     elif sub_channel_data["type"] == "voice":
                         await guild.create_voice_channel(
                             name=sub_channel_data["name"],
                             category=new_category,
                             position=sub_channel_data.get("position", 0),
-                            user_limit=sub_channel_data.get("user_limit")
+                            user_limit=sub_channel_data.get("user_limit"),
+                            overwrites=sub_overwrites
                         )
             else:
                 # Criar canais sem categoria
@@ -228,13 +296,15 @@ class BackupRestore(commands.Cog):
                     await guild.create_text_channel(
                         name=channel_data["name"],
                         position=channel_data.get("position", 0),
-                        topic=channel_data.get("topic")
+                        topic=channel_data.get("topic"),
+                        overwrites=overwrites
                     )
                 elif channel_data["type"] == "voice":
                     await guild.create_voice_channel(
                         name=channel_data["name"],
                         position=channel_data.get("position", 0),
-                        user_limit=channel_data.get("user_limit")
+                        user_limit=channel_data.get("user_limit"),
+                        overwrites=overwrites
                     )
         
         # O envio da segunda e última mensagem
