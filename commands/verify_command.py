@@ -3,39 +3,43 @@ from discord.ext import commands
 from discord import app_commands, ui, ButtonStyle, TextStyle
 from discord.ui import Modal, TextInput
 from database.database import get_collection
-import os
 import asyncio
+import os
 
 # Classes dos Modais (Pop-ups)
 class VerifyConfigModal(Modal, title="Configurar Sistema de Verificação"):
+    """
+    Modal de configuração para o sistema de verificação.
+    Permite ao administrador definir o canal, cargo, e o conteúdo do embed.
+    """
     def __init__(self, guild_config, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.guild_config = guild_config
-        
-        # Pré-preenche os campos do modal com os dados do banco de dados, se existirem
+
+        # --- Campos do Modal ---
+        # Pré-preenche os campos com os dados do banco de dados, se existirem
         self.verify_channel = TextInput(
             label="Canal do Painel (ID do Canal)",
             placeholder="ID do canal onde o painel será enviado",
             required=False,
             max_length=20,
-            default=str(self.guild_config.get('channel_id')) if self.guild_config and self.guild_config.get('channel_id') else ''
+            default=str(self.guild_config.get('channel_id', ''))
         )
 
-        # Rótulo corrigido para se encaixar no limite de 45 caracteres do Discord
         self.verify_role = TextInput(
             label="ID do Cargo de Verificação",
             placeholder="ID do cargo que o membro receberá (obrigatório)",
             required=True,
             max_length=20,
-            default=str(self.guild_config.get('role_id')) if self.guild_config and self.guild_config.get('role_id') else ''
+            default=str(self.guild_config.get('role_id', ''))
         )
-    
+
         self.embed_title = TextInput(
             label="Título do Embed",
             placeholder="Verificação do Servidor!",
             required=False,
             max_length=256,
-            default=self.guild_config.get('embed_title') if self.guild_config else ''
+            default=self.guild_config.get('embed_title', '')
         )
 
         self.embed_description = TextInput(
@@ -44,13 +48,12 @@ class VerifyConfigModal(Modal, title="Configurar Sistema de Verificação"):
             style=TextStyle.paragraph,
             required=False,
             max_length=4000,
-            default=self.guild_config.get('embed_description') if self.guild_config else ''
+            default=self.guild_config.get('embed_description', '')
         )
-    
+
         embed_color, embed_image_url = None, None
-        if self.guild_config and self.guild_config.get('embed_color'):
+        if self.guild_config:
             embed_color = self.guild_config.get('embed_color')
-        if self.guild_config and self.guild_config.get('embed_image_url'):
             embed_image_url = self.guild_config.get('embed_image_url')
         
         default_color_image = ""
@@ -76,38 +79,38 @@ class VerifyConfigModal(Modal, title="Configurar Sistema de Verificação"):
         self.add_item(self.embed_color_and_image)
 
     async def on_submit(self, interaction: discord.Interaction):
+        """
+        Salva as configurações do modal no banco de dados.
+        """
         await interaction.response.defer(thinking=True, ephemeral=True)
         guild_id = interaction.guild.id
-    
+
         try:
-            channel_id = int(self.verify_channel.value) if self.verify_channel.value else None
-            role_id = int(self.verify_role.value) if self.verify_role.value else None
+            channel_id = int(self.verify_channel.value) if self.verify_channel.value.isdigit() else None
+            role_id = int(self.verify_role.value) if self.verify_role.value.isdigit() else None
         except ValueError:
             await interaction.followup.send("❌ IDs de canal ou cargo inválidos. Use apenas números.", ephemeral=True)
+            return
+
+        if not role_id:
+            await interaction.followup.send("❌ O ID do cargo de verificação é obrigatório.", ephemeral=True)
             return
 
         embed_color, embed_image_url = None, None
         if self.embed_color_and_image.value:
             parts = [part.strip() for part in self.embed_color_and_image.value.split('|')]
-            if len(parts) > 0:
-                is_color_hex = parts[0].startswith('#')
-                if is_color_hex:
+            
+            # Tenta pegar a cor e a imagem, independentemente da ordem
+            for part in parts:
+                if part.startswith('#'):
                     try:
-                        embed_color = int(parts[0].replace('#', ''), 16)
+                        embed_color = int(part.replace('#', ''), 16)
                     except ValueError:
                         await interaction.followup.send("❌ Cor HEX inválida. Use o formato #FFFFFF.", ephemeral=True)
                         return
-                    if len(parts) > 1 and parts[1].startswith('http'):
-                        embed_image_url = parts[1]
-                elif parts[0].startswith('http'):
-                    embed_image_url = parts[0]
-                    if len(parts) > 1 and parts[1].startswith('#'):
-                        try:
-                            embed_color = int(parts[1].replace('#', ''), 16)
-                        except ValueError:
-                            await interaction.followup.send("❌ Cor HEX inválida. Use o formato #FFFFFF.", ephemeral=True)
-                            return
-        
+                elif part.startswith(('http://', 'https://')):
+                    embed_image_url = part
+            
         config_data = {
             'guild_id': guild_id,
             'channel_id': channel_id,
@@ -129,8 +132,10 @@ class VerifyConfigModal(Modal, title="Configurar Sistema de Verificação"):
 
         await interaction.followup.send("✅ Configurações de verificação salvas com sucesso! Use o botão 'Enviar Painel' para enviar o painel ao canal.", ephemeral=True)
 
-# Classes dos Botões e View
+
+# Classes dos Botões e View do painel de verificação
 class VerifyButton(ui.Button):
+    """Botão para o membro se verificar."""
     def __init__(self, bot):
         super().__init__(label="Verificar-se", style=ButtonStyle.green, custom_id="verify_button")
         self.bot = bot
@@ -146,23 +151,29 @@ class VerifyButton(ui.Button):
 
         role = interaction.guild.get_role(guild_config['role_id'])
         if not role:
-            await interaction.followup.send("❌ O cargo de verificação não foi encontrado.", ephemeral=True)
+            await interaction.followup.send("❌ O cargo de verificação não foi encontrado. Por favor, verifique se o ID está correto ou se o cargo não foi excluído.", ephemeral=True)
             return
 
         try:
             await interaction.user.add_roles(role)
             await interaction.followup.send("✅ Você foi verificado(a) com sucesso!", ephemeral=True)
         except discord.Forbidden:
-            await interaction.followup.send("❌ Não tenho permissão para adicionar este cargo. Por favor, verifique minhas permissões.", ephemeral=True)
+            await interaction.followup.send("❌ Não tenho permissão para adicionar este cargo. Por favor, verifique minhas permissões no servidor.", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Ocorreu um erro ao tentar verificar. Detalhes: {e}", ephemeral=True)
+
 
 class VerifyView(ui.View):
+    """View contendo o botão de verificação. É persistente."""
     def __init__(self, bot):
         super().__init__(timeout=None)
         self.bot = bot
         self.add_item(VerifyButton(self.bot))
 
+
 # Classes dos Botões do Painel de Configuração
 class ConfigButton(ui.Button):
+    """Botão para abrir o modal de configuração."""
     def __init__(self, bot):
         super().__init__(label="Configurar Verificação", style=ButtonStyle.primary, custom_id="config_verify_button")
         self.bot = bot
@@ -172,7 +183,9 @@ class ConfigButton(ui.Button):
         guild_config = await collection.find_one({'guild_id': interaction.guild.id})
         await interaction.response.send_modal(VerifyConfigModal(guild_config))
 
+
 class SendPanelButton(ui.Button):
+    """Botão para enviar o painel de verificação ao canal configurado."""
     def __init__(self, bot):
         super().__init__(label="Enviar Painel", style=ButtonStyle.green, custom_id="send_verify_panel_button")
         self.bot = bot
@@ -185,7 +198,7 @@ class SendPanelButton(ui.Button):
         if not guild_config:
             await interaction.followup.send("❌ Nenhuma configuração de verificação encontrada. Por favor, configure o painel primeiro.", ephemeral=True)
             return
-        
+
         channel_id = guild_config.get('channel_id')
         channel = interaction.guild.get_channel(channel_id) if channel_id else interaction.channel
 
@@ -207,17 +220,18 @@ class SendPanelButton(ui.Button):
             try:
                 old_message = await channel.fetch_message(guild_config.get('panel_message_id'))
                 await old_message.delete()
-            except discord.NotFound:
+            except (discord.NotFound, discord.Forbidden):
+                # Ignora se a mensagem não for encontrada ou se o bot não tiver permissão para excluir
                 pass
-            except discord.Forbidden:
-                await interaction.followup.send("❌ Não tenho permissão para excluir a mensagem antiga do painel. Por favor, exclua-a manualmente.", ephemeral=True)
 
         new_message = await channel.send(embed=embed, view=verify_view)
         await collection.update_one({'guild_id': interaction.guild.id}, {'$set': {'panel_message_id': new_message.id}})
 
         await interaction.followup.send(f"✅ Painel de verificação enviado para {channel.mention}!", ephemeral=True)
 
+
 class RemoveButton(ui.Button):
+    """Botão para remover o sistema de verificação."""
     def __init__(self, bot):
         super().__init__(label="Remover Verificação", style=ButtonStyle.danger, custom_id="remove_verify_button")
         self.bot = bot
@@ -233,7 +247,7 @@ class RemoveButton(ui.Button):
                 if channel:
                     message = await channel.fetch_message(existing_config.get('panel_message_id'))
                     await message.delete()
-            except (discord.NotFound, discord.Forbidden):
+            except (discord.NotFound, discord.Forbidden, AttributeError):
                 pass
             
             await collection.delete_one({'guild_id': interaction.guild.id})
@@ -241,15 +255,23 @@ class RemoveButton(ui.Button):
         else:
             await interaction.followup.send("❌ Não há sistema de verificação para remover.", ephemeral=True)
 
+
 class ConfigPanelView(ui.View):
+    """View contendo os botões de configuração. É persistente."""
     def __init__(self, bot):
         super().__init__(timeout=None)
+        self.bot = bot
         self.add_item(ConfigButton(bot))
         self.add_item(SendPanelButton(bot))
         self.add_item(RemoveButton(bot))
 
+
 # Classe Principal (Cog)
 class VerifyModule(commands.Cog):
+    """
+    Cog principal para o módulo de verificação.
+    Contém o comando de barra para criar o painel de configuração.
+    """
     def __init__(self, bot):
         self.bot = bot
     
@@ -265,8 +287,9 @@ class VerifyModule(commands.Cog):
         )
         await interaction.followup.send(embed=embed, view=ConfigPanelView(self.bot))
 
+
 async def setup(bot: commands.Bot):
+    """Função de configuração que adiciona a cog e as views persistentes."""
     await bot.add_cog(VerifyModule(bot))
-    # Adiciona as views persistentes aqui, seguindo o padrão do seu módulo de tickets.
     bot.add_view(VerifyView(bot))
     bot.add_view(ConfigPanelView(bot))
