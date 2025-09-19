@@ -60,11 +60,22 @@ class TicketModal(ui.Modal, title="Abrir Ticket"):
             overwrites=overwrites
         )
 
+        # A CORREÇÃO ESTÁ AQUI:
+        # Monta a descrição em uma variável para quebra de linha
+        embed_description = f"Ticket aberto por {interaction.user.mention} (ID: {interaction.user.id}).\n\n**Assunto:** {self.subject.value}"
+        
+        # Adiciona a descrição detalhada com quebra de linha
+        if self.description.value:
+            embed_description += f"\n**Descrição:**\n{self.description.value}"
+        else:
+            embed_description += "\n**Descrição:** Nenhuma"
+            
         ticket_embed = discord.Embed(
             title=f"Novo Ticket de Suporte",
-            description=f"Ticket aberto por {interaction.user.mention} (ID: {interaction.user.id}).\n\n**Assunto:** {self.subject.value}\n**Descrição:** {self.description.value or 'Nenhuma'}",
+            description=embed_description,
             color=discord.Color.blue()
         )
+
         ticket_embed.set_footer(text=f"Ticket ID: {interaction.user.id}")
 
         view = TicketView(self.bot)
