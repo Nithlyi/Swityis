@@ -4,6 +4,8 @@ from discord import app_commands, ui
 import random
 import asyncio
 
+
+
 class RetributionView(ui.View):
     def __init__(self, bot, command_name, target_user, original_user):
         super().__init__(timeout=600)
@@ -190,6 +192,8 @@ def setup(tree: app_commands.CommandTree, bot: commands.Bot, owner_id):
             )
 
         social_command = commands.cooldown(1, 10, commands.BucketType.user)(social_command)
+
+    #social_command = commands.cooldown(1, 10, commands.BucketType.user)(social_command)
 
     create_social_command("beijo", "beijou", "beijar")
     create_social_command("abraço", "abraçou", "abraçar")
