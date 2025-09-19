@@ -288,7 +288,6 @@ class VerifyModule(commands.Cog):
         )
         await interaction.followup.send(embed=embed, view=ConfigPanelView(self.bot))
 
-
 async def setup(bot: commands.Bot):
     """Função de configuração que adiciona a cog e as views persistentes."""
     await bot.add_cog(VerifyModule(bot))
