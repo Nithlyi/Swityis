@@ -189,6 +189,8 @@ def setup(tree: app_commands.CommandTree, bot: commands.Bot, owner_id):
                 view=view
             )
 
+        social_command = commands.cooldown(1, 10, commands.BucketType.user)(social_command)
+
     create_social_command("beijo", "beijou", "beijar")
     create_social_command("abraço", "abraçou", "abraçar")
     create_social_command("cafune", "fez cafuné em", "fazer cafuné em")

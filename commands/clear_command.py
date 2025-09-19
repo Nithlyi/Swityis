@@ -18,11 +18,16 @@ class ClearCommand(commands.Cog):
         await interaction.response.defer(ephemeral=True, thinking=True)
         
         try:
-            # Apaga as mensagens
-            deleted = await interaction.channel.purge(limit=quantidade + 1)
-            
+            deleted_count = 0
+            # Apaga as mensagens individualmente com delay
+            async for message in interaction.channel.history(limit=quantidade + 1):
+                if message.id != interaction.message.id:  # Evita apagar a mensagem do comando
+                    await message.delete()
+                    deleted_count += 1
+                    await asyncio.sleep(0.5)  # Delay de 0.5 segundos
+
             # Envia uma mensagem de confirmação
-            await interaction.followup.send(f"Foram apagadas {len(deleted) - 1} mensagens.", ephemeral=True)
+            await interaction.followup.send(f"Foram apagadas {deleted_count} mensagens.", ephemeral=True)
         except discord.Forbidden:
             await interaction.followup.send("Não tenho permissão para gerenciar mensagens neste canal.", ephemeral=True)
         except Exception as e:

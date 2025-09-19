@@ -117,10 +117,19 @@ class AntiSpamAntilinkModule(commands.Cog):
             if len(self.spam_cooldowns[user_id]) > antispam_config['limit']:
                 try:
                     await message.channel.send(f"🛑 {message.author.mention}, não faça spam! As suas mensagens serão excluídas.", delete_after=5)
-                    # Exclui as mensagens recentes do usuário
+                    # Exclui as mensagens recentes do usuário individualmente com delay
                     messages_to_delete = [msg async for msg in message.channel.history(limit=antispam_config['limit'] + 1, before=message.created_at)]
-                    await message.channel.delete_messages(messages_to_delete)
-                    self.spam_cooldowns[user_id] = [] # Limpa o registro do usuário
+                    for msg in messages_to_delete:
+                        try:
+                            await msg.delete()
+                            await asyncio.sleep(0.5)  # Delay de 0.5 segundos
+                        except discord.errors.NotFound:
+                            pass  # Mensagem já foi excluída
+                        except discord.errors.Forbidden:
+                            print(f"Erro: Sem permissão para excluir mensagens no canal {message.channel.name}.")
+                            break  # Parar de excluir se não tiver permissão
+
+                    self.spam_cooldowns[user_id] = []  # Limpa o registro do usuário
                 except discord.errors.Forbidden:
                     print(f"Erro: Sem permissão para gerir mensagens no canal {message.channel.name}.")
 

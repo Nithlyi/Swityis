@@ -36,7 +36,8 @@ class DisableCommand(commands.Cog):
             await interaction.followup.send(f"Comando `{command_name}` desativado com sucesso.", ephemeral=True)
         else:
             await interaction.response.send_message(f"Comando `{command_name}` não encontrado ou já está desativado.", ephemeral=True)
-            
+    
+    @commands.cooldown(1, 60, commands.BucketType.user)  # Cooldown de 60 segundos por usuário
     @app_commands.command(name="enable", description="Reativa um comando do bot. Apenas o dono pode usar.")
     @app_commands.describe(command_name="O nome do comando para reativar.")
     async def enable(self, interaction: discord.Interaction, command_name: str):
@@ -62,6 +63,13 @@ class DisableCommand(commands.Cog):
                 await interaction.followup.send(f"Não foi possível reativar o comando `{command_name}`.", ephemeral=True)
         else:
             await interaction.response.send_message(f"Comando `{command_name}` não encontrado na lista de desativados.", ephemeral=True)
+
+    @enable.error
+    async def enable_error(self, interaction: discord.Interaction, error):
+        if isinstance(error, commands.CommandOnCooldown):
+            await interaction.response.send_message(f"Este comando está em cooldown. Tente novamente em {error.retry_after:.1f} segundos.", ephemeral=True)
+        else:
+            raise error
 
 async def setup(bot: commands.Bot, owner_id: int):
     await bot.add_cog(DisableCommand(bot, owner_id))

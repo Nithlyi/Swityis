@@ -3,8 +3,21 @@ from discord import app_commands
 from discord.ext import commands
 import logging
 from motor.motor_asyncio import AsyncIOMotorClient
+import asyncio
 
 logger = logging.getLogger(__name__)
+
+async def handle_rate_limit(func, *args, **kwargs):
+    try:
+        return await func(*args, **kwargs)
+    except discord.errors.HTTPException as e:
+        if e.status == 429:
+            print("Rate limit atingido. Esperando...")
+            await asyncio.sleep(e.retry_after)
+            return await handle_rate_limit(func, *args, **kwargs)
+        else:
+            raise e
+
 
 # Funções para o banco de dados
 async def get_antiraid_config(db_client, guild_id):

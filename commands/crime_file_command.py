@@ -27,11 +27,17 @@ def setup(tree: app_commands.CommandTree, bot: commands.Bot):
         )
         embed.set_thumbnail(url=usuario.avatar.url if usuario.avatar else None)
 
+        punishment_count = 0
         for punishment in punishments:
             embed.add_field(
                 name=f"{punishment['tipo']} - {punishment['data']}",
                 value=f"**Motivo:** {punishment['motivo']}",
                 inline=False
             )
+            punishment_count += 1
+            
+            if punishment_count >= 20:  # Limita o número de punições exibidas para evitar exceder o limite de tamanho da mensagem
+                embed.add_field(name="Aviso", value="A lista de punições foi truncada para evitar exceder o limite de tamanho da mensagem.", inline=False)
+                break
         
         await interaction.followup.send(embed=embed)

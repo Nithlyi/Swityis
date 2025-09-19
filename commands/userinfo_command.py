@@ -44,6 +44,12 @@ def setup(tree: app_commands.CommandTree, bot: commands.Bot):
         embed.add_field(name="⏰ Conta Criada Em", value=account_created, inline=True)
         embed.add_field(name="🎉 Entrou no Servidor Em", value=joined_server, inline=True)
         embed.add_field(name="🏷️ Cargo Mais Alto", value=top_role.mention, inline=True)
+
+        # Limita o número de cargos exibidos
+        if len(roles) > 20:
+            roles = roles[:20]
+            roles.append("...e mais")
+        
         embed.add_field(name="🛡️ Cargos", value=" ".join(roles) if roles else "Nenhum cargo.", inline=False)
 
         await interaction.followup.send(embed=embed)

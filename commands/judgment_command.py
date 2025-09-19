@@ -43,6 +43,7 @@ class JudgmentView(discord.ui.View):
         self.children[1].label = f"Não ({self.votes_no})"
         
         # Envia a nova visualização
+        await asyncio.sleep(2)  # Adiciona um delay de 2 segundos
         await self.message.edit(view=self)
 
     async def on_timeout(self):

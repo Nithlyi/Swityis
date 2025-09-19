@@ -6,6 +6,18 @@ from database.database import get_collection
 from bson import ObjectId
 import asyncio
 import os
+import asyncio
+
+async def handle_rate_limit(func, *args, **kwargs):
+    try:
+        return await func(*args, **kwargs)
+    except discord.errors.HTTPException as e:
+        if e.status == 429:
+            print("Rate limit atingido. Esperando...")
+            await asyncio.sleep(e.retry_after)
+            return await handle_rate_limit(func, *args, **kwargs)
+        else:
+            raise e
 
 class TicketButton(discord.ui.Button):
     def __init__(self, bot):
@@ -54,7 +66,7 @@ class TicketModal(ui.Modal, title="Abrir Ticket"):
             interaction.guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)
         }
 
-        ticket_channel = await interaction.guild.create_text_channel(
+        ticket_channel = await handle_rate_limit(interaction.guild.create_text_channel,
             name=channel_name,
             category=ticket_category,
             overwrites=overwrites
@@ -79,7 +91,7 @@ class TicketModal(ui.Modal, title="Abrir Ticket"):
         ticket_embed.set_footer(text=f"Ticket ID: {interaction.user.id}")
 
         view = TicketView(self.bot)
-        initial_message = await ticket_channel.send(embed=ticket_embed, view=view)
+        initial_message = await handle_rate_limit(ticket_channel.send, embed=ticket_embed, view=view)
         
         await collection.insert_one({
             "channel_id": ticket_channel.id,
@@ -106,7 +118,7 @@ class TicketView(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
 
         transcript = f"Transcrição do Ticket\nTicket ID: {interaction.channel.id}\nUsuário: {interaction.channel.topic}\nData: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-        async for message in interaction.channel.history(limit=None, oldest_first=True):
+        async for message in interaction.channel.history(limit=100, oldest_first=True):
             transcript += f"[{message.created_at.strftime('%Y-%m-%d %H:%M:%S')}] {message.author.name}: {message.content}\n"
 
         file_name = f"ticket_{interaction.channel.id}_transcript.txt"
@@ -117,7 +129,7 @@ class TicketView(discord.ui.View):
         
         try:
             if ticket_owner:
-                await ticket_owner.send(f"Aqui está a transcrição do seu ticket no servidor {interaction.guild.name}:", file=discord.File(file_name))
+                await handle_rate_limit(ticket_owner.send, f"Aqui está a transcrição do seu ticket no servidor {interaction.guild.name}:", file=discord.File(file_name))
         except discord.Forbidden:
             pass
         

@@ -29,12 +29,22 @@ def setup(tree: app_commands.CommandTree, bot: commands.Bot):
             # Guarda os IDs dos cargos atuais para restauração futura
             original_roles_ids = [r.id for r in usuario.roles if r.name != "@everyone" and r.id != quarantine_role_id]
             
-            # Remove todos os cargos do usuário, exceto o @everyone
+            # Remove todos os cargos do usuário, exceto o @everyone, com delay
             roles_to_remove = [r for r in usuario.roles if r.name != "@everyone"]
-            await usuario.remove_roles(*roles_to_remove, reason=motivo)
+            for role in roles_to_remove:
+                try:
+                    await usuario.remove_roles(role, reason=motivo)
+                    await asyncio.sleep(0.5)  # Adiciona um delay de 0.5 segundos
+                except discord.Forbidden:
+                    await interaction.followup.send(f"Não tenho permissão para remover o cargo {role.name} de {usuario.display_name}.")
+                    return
             
             # Adiciona o cargo de quarentena
-            await usuario.add_roles(quarantine_role, reason=motivo)
+            try:
+                await usuario.add_roles(quarantine_role, reason=motivo)
+            except discord.Forbidden:
+                await interaction.followup.send(f"Não tenho permissão para adicionar o cargo de quarentena a {usuario.display_name}.")
+                return
 
             # Salva os cargos originais no banco de dados
             users_collection = bot.db_client['users_data']

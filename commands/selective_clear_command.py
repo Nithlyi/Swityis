@@ -15,6 +15,7 @@ def setup(tree: app_commands.CommandTree, bot: commands.Bot):
                 try:
                     await message.delete()
                     deleted_count += 1
+                    await asyncio.sleep(0.5)  # Adiciona um delay de 0.5 segundos
                 except discord.NotFound:
                     pass
         

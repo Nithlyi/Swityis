@@ -41,7 +41,13 @@ def setup(tree: app_commands.CommandTree, bot: commands.Bot):
                 await usuario.remove_roles(quarantine_role, reason="Quarentena removida.")
             
             if roles_to_add:
-                await usuario.add_roles(*roles_to_add, reason="Cargos restaurados após quarentena.")
+                for role in roles_to_add:
+                    try:
+                        await usuario.add_roles(role, reason="Cargos restaurados após quarentena.")
+                        await asyncio.sleep(0.5)  # Adiciona um delay de 0.5 segundos
+                    except discord.Forbidden:
+                        await interaction.followup.send(f"Não tenho permissão para adicionar o cargo {role.name} a {usuario.display_name}.")
+                        return
 
             # Limpa o registro do banco de dados para evitar lixo
             await users_collection.delete_one(

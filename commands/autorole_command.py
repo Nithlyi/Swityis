@@ -65,6 +65,7 @@ class AutoroleModule(commands.Cog):
                 try:
                     await member.add_roles(role)
                     print(f"Cargo {role.name} adicionado a {member.name}.")
+                    await asyncio.sleep(0.5)  # Adiciona um delay de 0.5 segundos
                 except discord.errors.Forbidden:
                     print(f"Erro: Sem permissão para adicionar o cargo {role.name} a {member.name}.")
 

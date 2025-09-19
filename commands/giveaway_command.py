@@ -139,7 +139,7 @@ def setup(tree: app_commands.CommandTree, bot: commands.Bot):
 
         # Loop para atualizar o cronômetro
         while datetime.utcnow() < end_time:
-            await asyncio.sleep(1) # Atualiza a cada segundo
+            await asyncio.sleep(30)  # Atualiza a cada 30 segundos
             try:
                 # Recria o embed para atualizar o cronômetro e a contagem de participantes
                 updated_embed = discord.Embed(
@@ -153,7 +153,7 @@ def setup(tree: app_commands.CommandTree, bot: commands.Bot):
                 updated_embed.set_footer(text=f"Partipantes: {len(view.participants)} | {rodape if rodape else ''}")
                 if imagem_url:
                     updated_embed.set_image(url=imagem_url)
-                
+
                 await giveaway_message.edit(embed=updated_embed, view=view)
             except discord.NotFound:
                 return

@@ -149,11 +149,12 @@ class VerifyButton(ui.Button):
 
         role = interaction.guild.get_role(guild_config['role_id'])
         if not role:
-            await interaction.followup.send("❌ O cargo de verificação não foi encontrado. Por favor, verifique se o ID está correto ou se o cargo não foi excluído.", ephemeral=True)
+            await interaction.followup.send("❌ O cargo de verificação não foi encontrado. Por favor, verifique se o ID está correto ou se o cargo não foi exclu��do.", ephemeral=True)
             return
 
         try:
             await interaction.user.add_roles(role)
+            await asyncio.sleep(0.5)  # Adiciona um delay de 0.5 segundos
             await interaction.followup.send("✅ Você foi verificado(a) com sucesso!", ephemeral=True)
         except discord.Forbidden:
             await interaction.followup.send("❌ Não tenho permissão para adicionar este cargo. Por favor, verifique minhas permissões no servidor.", ephemeral=True)
@@ -188,6 +189,7 @@ class SendPanelButton(ui.Button):
         super().__init__(label="Enviar Painel", style=ButtonStyle.green, custom_id="send_verify_panel_button")
         self.bot = bot
 
+    @commands.cooldown(1, 60, commands.BucketType.guild)
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer(thinking=True, ephemeral=True)
         collection = get_collection(self.bot.db_client, 'verify_configs')
@@ -228,6 +230,13 @@ class SendPanelButton(ui.Button):
             await interaction.followup.send(f"✅ Painel de verificação enviado para {channel.mention}!", ephemeral=True)
         except discord.Forbidden:
             await interaction.followup.send("❌ Não tenho permissão para enviar mensagens neste canal.", ephemeral=True)
+
+    @callback.error
+    async def send_panel_error(self, interaction: discord.Interaction, error):
+        if isinstance(error, commands.CommandOnCooldown):
+            await interaction.response.send_message(f"Este comando está em cooldown. Tente novamente em {error.retry_after:.1f} segundos.", ephemeral=True)
+        else:
+            raise error
 
 
 class RemoveButton(ui.Button):
