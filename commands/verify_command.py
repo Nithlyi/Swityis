@@ -219,49 +219,6 @@ class SendPanelButton(ui.Button):
             try:
                 old_message = await channel.fetch_message(guild_config.get('panel_message_id'))
                 await old_message.delete()
-            except (discord.NotFound, discord.Forbidden):
-                # Ignora se a mensagem não for encontrada ou se o bot não tiver permissão para excluir
-                pass
-
-        try:
-            new_message = await channel.send(embed=embed, view=verify_view)
-            await collection.update_one({'guild_id': interaction.guild.id}, {'$set': {'panel_message_id': new_message.id}})
-            await interaction.followup.send(f"✅ Painel de verificação enviado para {channel.mention}!", ephemeral=True)
-        except discord.Forbidden:
-            await interaction.followup.send("❌ Não tenho permissão para enviar mensagens neste canal.", ephemeral=True)
-
-
-    @commands.cooldown(1, 60, commands.BucketType.guild)
-    async def callback(self, interaction: discord.Interaction):
-        await interaction.response.defer(thinking=True, ephemeral=True)
-        collection = get_collection(self.bot.db_client, 'verify_configs')
-        guild_config = await collection.find_one({'guild_id': interaction.guild.id})
-
-        if not guild_config:
-            await interaction.followup.send("❌ Nenhuma configuração de verificação encontrada. Por favor, configure o painel primeiro.", ephemeral=True)
-            return
-
-        channel_id = guild_config.get('channel_id')
-        channel = interaction.guild.get_channel(channel_id) if channel_id else interaction.channel
-
-        if not channel:
-            await interaction.followup.send("❌ Canal não encontrado. Por favor, verifique o ID do canal ou tente novamente.", ephemeral=True)
-            return
-            
-        embed = discord.Embed(
-            title=guild_config.get('embed_title'),
-            description=guild_config.get('embed_description'),
-            color=guild_config.get('embed_color') or discord.Color.blue()
-        )
-        if guild_config.get('embed_image_url'):
-            embed.set_image(url=guild_config.get('embed_image_url'))
-
-        verify_view = VerifyView(self.bot)
-    
-        if guild_config.get('panel_message_id'):
-            try:
-                old_message = await channel.fetch_message(guild_config.get('panel_message_id'))
-                await old_message.delete()
             except (discord.NotFound, discord.Forbidden, AttributeError):
                 # Ignora se a mensagem não for encontrada ou se o bot não tiver permissão para excluir
                 pass
@@ -273,58 +230,9 @@ class SendPanelButton(ui.Button):
         except discord.Forbidden:
             await interaction.followup.send("❌ Não tenho permissão para enviar mensagens neste canal.", ephemeral=True)
 
-    @commands.cooldown(1, 60, commands.BucketType.guild)
-    async def callback(self, interaction: discord.Interaction):
-        await interaction.response.defer(thinking=True, ephemeral=True)
-        collection = get_collection(self.bot.db_client, 'verify_configs')
-        guild_config = await collection.find_one({'guild_id': interaction.guild.id})
-
-        if not guild_config:
-            await interaction.followup.send("❌ Nenhuma configuração de verificação encontrada. Por favor, configure o painel primeiro.", ephemeral=True)
-            return
-
-        channel_id = guild_config.get('channel_id')
-        channel = interaction.guild.get_channel(channel_id) if channel_id else interaction.channel
-
-        if not channel:
-            await interaction.followup.send("❌ Canal não encontrado. Por favor, verifique o ID do canal ou tente novamente.", ephemeral=True)
-            return
-            
-        embed = discord.Embed(
-            title=guild_config.get('embed_title'),
-            description=guild_config.get('embed_description'),
-            color=guild_config.get('embed_color') or discord.Color.blue()
-        )
-        if guild_config.get('embed_image_url'):
-            embed.set_image(url=guild_config.get('embed_image_url'))
-
-        verify_view = VerifyView(self.bot)
-    
-        if guild_config.get('panel_message_id'):
-            try:
-                old_message = await channel.fetch_message(guild_config.get('panel_message_id'))
-                await old_message.delete()
-            except (discord.NotFound, discord.Forbidden):
-                # Ignora se a mensagem não for encontrada ou se o bot não tiver permissão para excluir
-                pass
-
-        try:
-            new_message = await channel.send(embed=embed, view=verify_view)
-            await collection.update_one({'guild_id': interaction.guild.id}, {'$set': {'panel_message_id': new_message.id}})
-            await interaction.followup.send(f"✅ Painel de verificação enviado para {channel.mention}!", ephemeral=True)
-        except discord.Forbidden:
-            await interaction.followup.send("❌ Não tenho permissão para enviar mensagens neste canal.", ephemeral=True)
-
-
 
 class RemoveButton(ui.Button):
     """Botão para remover o sistema de verificação."""
-
-    async def send_panel_error(self, interaction: discord.Interaction, error):
-        if isinstance(error, commands.CommandOnCooldown):
-            await interaction.response.send_message(f"Este comando está em cooldown. Tente novamente em {error.retry_after:.1f} segundos.", ephemeral=True)
-        else:
-            raise error
     def __init__(self, bot):
         super().__init__(label="Remover Verificação", style=ButtonStyle.danger, custom_id="remove_verify_button")
         self.bot = bot
@@ -333,6 +241,7 @@ class RemoveButton(ui.Button):
         await interaction.response.defer(thinking=True, ephemeral=True)
         collection = get_collection(self.bot.db_client, 'verify_configs')
         existing_config = await collection.find_one({'guild_id': interaction.guild.id})
+
         if existing_config:
             try:
                 channel = interaction.guild.get_channel(existing_config.get('channel_id'))
@@ -345,7 +254,7 @@ class RemoveButton(ui.Button):
             await collection.delete_one({'guild_id': interaction.guild.id})
             await interaction.followup.send("✅ Sistema de verificação removido com sucesso.", ephemeral=True)
         else:
-            await interaction.followup.send("❌ N��o há sistema de verificação para remover.", ephemeral=True)
+            await interaction.followup.send("❌ Não há sistema de verificação para remover.", ephemeral=True)
 
 
 class ConfigPanelView(ui.View):
@@ -366,7 +275,7 @@ class VerifyModule(commands.Cog):
     """
     def __init__(self, bot):
         self.bot = bot
-
+    
     @app_commands.command(name="painel_verificar", description="Cria um painel para configurar o sistema de verificação do servidor.")
     @app_commands.default_permissions(manage_channels=True)
     async def create_config_panel(self, interaction: discord.Interaction):
@@ -378,6 +287,7 @@ class VerifyModule(commands.Cog):
             color=discord.Color.blue()
         )
         await interaction.followup.send(embed=embed, view=ConfigPanelView(self.bot))
+
 
 async def setup(bot: commands.Bot):
     """Função de configuração que adiciona a cog e as views persistentes."""
